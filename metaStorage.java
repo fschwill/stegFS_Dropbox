@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -37,7 +38,7 @@ public class metaStorage implements java.io.Serializable {
 	private static final long serialVersionUID = 1L;
 	
 	// Hashmap to hold metadata objects
-	static Map<String, metadata> metaStorage = new HashMap<String, metadata>();
+	static Map<String, metadata> metaStorage = new ConcurrentHashMap<String, metadata>();
 	
 	
 	metaStorage(){
@@ -66,6 +67,18 @@ public class metaStorage implements java.io.Serializable {
 		metaStorage.put(filename, data);
 		
 	}
+	
+	
+	/**
+     * Get the salt of a specific file from metadata storage
+     * @return salt
+     */
+	public static String getSalt(String filename) {
+		
+		String salt = metaStorage.get(filename).getSalt();
+	
+		return salt;
+	}
 
 	
 	
@@ -78,6 +91,16 @@ public class metaStorage implements java.io.Serializable {
 			return true;}
 		else 
 			{return false;}	
+	}
+	
+	 /**
+     * Get metadata to a corresponding filename
+     * @return metadata
+     */
+	public static metadata get(String filename) {
+		return  metaStorage.get(filename);
+		
+		
 	}
 	 
 
@@ -98,7 +121,7 @@ public class metaStorage implements java.io.Serializable {
      */
 	public static void erase() throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IOException {
 		metaStorage = new HashMap<String, metadata>();
-		saveEncrypted("C:/KEYSTORE/metaStorage.db");
+		saveEncrypted("/mnt/share/metaStorage.db");
 		
 	}
 	

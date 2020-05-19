@@ -1,9 +1,15 @@
 package stegfs_dropbox;
 import java.io.File;
 import java.io.FilenameFilter;
+import java.io.IOException;
 import java.net.URI;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.NoSuchPaddingException;
 
 
 
@@ -13,6 +19,12 @@ public class mainApp {
 	static String authToken ="";
 
 	
+	/**
+	 * Get all files that are present in a directory
+	  @param input The path to the directory
+	  @return An array holding all files of a specific type
+	 * 
+	*/
 	public static File[] getFiles(File input){
         
 		// if input is a directory, return all files
@@ -31,6 +43,12 @@ public class mainApp {
         }
 	}
 	
+	
+	/**
+	 * Scan a directory for files
+	  @param directory the path were to scan
+	 * 
+	*/
 	public static void scanDirectory(String directory) throws Exception{
 		
 		File dropDirectory = new File (directory);
@@ -48,40 +66,79 @@ public class mainApp {
 	}
 	
 	
+	
+	/**
+	 * Process a file
+	 * check if it is already stored. 
+	 * 		if yes: ignore. 
+	 * 		if not: generate a random salt, add it to the metadata store, generate a per-file authenticator, then write the file to stegFS
+	  
+	  @param input The path to the directory
+	 * 
+	*/
 	public static void processFile(File file) throws Exception {
 		
 		// check if a file is already stored in metaStorage, add if not
-		metaStorage.loadDecrypt("C:/KEYSTORE/metaStorage.db");
+		metaStorage.loadDecrypt("/mnt/share/metaStorage.db");
 		
 		if (metaStorage.contains(file.getName())){
 			System.out.println("already stored");
 		}
 		
 		else {
-			// generate a random salt, then add the metadata object (filename, salt) to metadata storage
-			metaStorage.add(file.getName(), new metadata (Auth.getRandomSalt()));
-			System.out.println("file " + file.getName() + " added to storage");
+			// generate a random salt, add it to the metadata store, encrypt the metadata store , generate a per-file authenticator from (authToken XOR salt), then write the file to stegFS
+			String salt = Auth.getRandomSalt();
+			metaStorage.add(file.getName(),new metadata (salt));
+			System.out.println("file " + file.getName() + " added to metadata storage");
 			
 			// update metadata storage to disk
-			metaStorage.saveEncrypted("C:/KEYSTORE/metaStorage.db");
+			metaStorage.saveEncrypted("/mnt/share/metaStorage.db");
 			
-			//write the file to stegfs
-			//stegfs write  filename:
-			
-			String passPerFile = Auth.calcPassPerFile(authToken, Auth.getRandomSalt());
-			System.out.println("Write to stegfs: " + file.getName() + ":" + passPerFile);
+			//generate a per-file write the file to stegfs
+			String passPerFile = Auth.calcPassPerFile(authToken, salt);
+			callBash.writeToStegFS(file.getName() + ":" + authToken); //TODO: change to passperfile
 		}
 	
 	}
 	
-	
-	
+
+	/**
+	 * Print a list of all files stored in the metadata storage
+	 * 
+	*/
 	public static void printFiles(){
 		
 		List<String> listOfFiles = metaStorage.getAllFiles();
 		System.out.println("List of files:");
 		for (int i=0; i<listOfFiles.size(); i++) {
 			System.out.println("Filename: " + listOfFiles.get(i));
+		}
+		
+	}
+	
+	
+	/**
+	 * Get all files from the steganographic file system
+	 * Used at launch in order to copy all files from stegFS to the DropSteg folder on ram-disk
+	 * 
+	*/
+	public static void readAllFromFS() throws InvalidKeyException, ClassNotFoundException, NoSuchAlgorithmException, NoSuchPaddingException, BadPaddingException, IOException {
+		
+		metaStorage.loadDecrypt("/mnt/share/metaStorage.db");
+		List<String> listOfFiles = metaStorage.getAllFiles();
+		for (int i=0; i<listOfFiles.size(); i++) {
+			String filename = listOfFiles.get(i);
+			
+			/* TODO: change to salt
+			String salt = metaStorage.getSalt(filename);
+			System.out.println("exists " + metaStorage.contains(listOfFiles.get(i)) + " filename " + filename + "salt" + salt);
+			
+			// only proceed if salt and authtoken are available
+			if (salt !=null) {
+			String passPerFile = Auth.calcPassPerFile(authToken, salt);
+			*/
+			callBash.readFromStegFS(filename + ":" + authToken);
+			
 		}
 		
 	}
@@ -95,8 +152,9 @@ public class mainApp {
 		String password = "f0e4c2f76c58916ec258f246851bea091d14d4247a2fc3e18694461b1816e13b";
 		
 		// key-file authentication
-		URI uri = new URI("file:///C:/KEYSTORE/keyfile.txt");
-		String key = Auth.getKeyFile(uri);
+		//URI uri = new URI("/mnt/share/key.file");
+		//String key = Auth.getKeyFile(uri);
+		String key = "f0e4c2f76c58916ec258f246851bea091d14d4247a2fc3e18694461b1816e14c";
 		
 		// 2FA authentication
 		authToken = Auth.calculateAuthToken(password ,key);
@@ -108,10 +166,12 @@ public class mainApp {
 		// scan drop-directory regularly, add new files to metadata storage, ignore existing files
 		
 		
-		// metaStorage.erase(); // erase storage for testing
+		//metaStorage.erase(); // erase storage for testing
+		//createRamDisk();
+		readAllFromFS();
 		
 		while (1==1) { // daemon to run in background
-		scanDirectory("C:/stegdrop/");
+		scanDirectory("/mnt/StegDrop");
 		TimeUnit.SECONDS.sleep(10);
 		
 	}
